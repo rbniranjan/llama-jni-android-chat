@@ -1,5 +1,7 @@
 # llama-jni
 
+简体中文 / [English](./README.md)
+
 Android JNI for port of Facebook's LLaMA model in C/C++
 
 适用场景：
@@ -214,8 +216,8 @@ https://github.com/shixiangcap/llama-jni/assets/41248645/f9405141-e994-409d-8d20
 
 ## 相关仓库
 
-- [llama.cpp](https://github.com/ggerganov/llama.cpp) — 基于C/C++的Facebook LLaMA模型接口。
 - [LLaMA](https://github.com/facebookresearch/llama) — LLaMA模型的推理代码。
+- [llama.cpp](https://github.com/ggerganov/llama.cpp) — 基于C/C++的Facebook LLaMA模型接口。
 
 ## 维护者
 
@@ -223,7 +225,7 @@ https://github.com/shixiangcap/llama-jni/assets/41248645/f9405141-e994-409d-8d20
 
 ## 如何贡献
 
-非常欢迎你的加入！提交一个[Pull Request](https://github.com/shixiangcap/llama-jni/pulls)。
+非常欢迎你的加入！[提一个Issue](https://github.com/shixiangcap/llama-jni/issues)或者提交一个Pull Request。
 
 ### 贡献者
 
