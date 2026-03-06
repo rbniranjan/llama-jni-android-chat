@@ -1,237 +1,208 @@
-# llama-jni
+# llama-jni-android-chat (Android llama.cpp JNI Wrapper)
 
-English / [简体中文](./README-zh.md)
+Java + XML + ViewBinding Android app that runs local GGUF LLMs using a JNI bridge to `llama.cpp`.
 
-Android JNI for port of Facebook's LLaMA model in C/C++
+This repository includes:
 
-Scenario:
+- A curated in-app model catalog (`assets/models_catalog.json`)
+- In-app model downloads via `DownloadManager`
+- Persistent model state and selected model via `SharedPreferences`
+- Chat UI with prompt templates per model family
+- Runtime LLM settings (max tokens, temperature, top-k, top-p)
+- Native inference through JNI (`io-prompt` and `interactive`)
 
-- Input modules
+## Upstream Base
 
-- Voice control modules
+- Original JNI wrapper base repo: [shixiangcap/llama-jni](https://github.com/shixiangcap/llama-jni)
+- Core inference engine: [ggerganov/llama.cpp](https://github.com/ggerganov/llama.cpp)
+- Current vendored llama.cpp sync marker in this repo:
+  - `app/src/main/cpp/scripts/sync-ggml.last`: `d6754f3d0e6d0acd21c12442353c9fd2f94188e7`
 
-## Table of Contents
+## Tech Stack
 
-- [Background](#background)
+- Android: Java, XML layouts, ViewBinding
+- Native: C/C++ (`llama.cpp`) via CMake + NDK
+- Build: Gradle / Android Studio
+- Min SDK: 30
+- Target SDK: 35
+- App ID: `com.hcltech.llamademo`
+- ABI currently configured: `arm64-v8a`
 
-- [Install](#install)
+## Project Structure
 
-- [Usage](#usage)
-
-- [Examples](#examples)
-
-- [Related Efforts](#related-efforts)
-
-- [Maintainers](#maintainers)
-
-- [Contributing](#contributing)
-
-- [License](#license)
-
-## Background
-
-[**llama.cpp**](https://github.com/ggerganov/llama.cpp) uses pure `C/C++` language to provide the port of [**LLaMA**](https://arxiv.org/abs/2302.13971), and implements the operation of [**LLaMA**](https://github.com/facebookresearch/llama) in MacBook and Android devices through 4-bit quantization.
-
-In order to better support the localization operation of large language models (LLM) on mobile devices, `llama-jni` aims to further encapsulate [**llama.cpp**](https://github.com/ggerganov/llama.cpp) and provide several common functions before the `C/C++` code is compiled for subsequent direct calls by the engineering to help mobile applications on Android devices directly use the LLM stored locally.
-
-The locally run `llama-jni` can empower mobile devices with powerful AI capabilities without network connection, which maximizes privacy and security.
-
-The goals of `llama-jni` include:
-
-1. Refactoring of the code for [main.cpp](https://github.com/ggerganov/llama.cpp/blob/master/examples/main/main.cpp) in [**llama.cpp**](https://github.com/ggerganov/llama.cpp) to achieve text output equivalent to the system command line in `Android` projects.
-2. Introduction of logs for `C/C++` code to better observe program operation in logs during debugging of `Android` projects.
-3. Rewriting of several `CMakeLists.txt` files to achieve smooth compilation process in `Android Studio`.
-4. Typical project structure and usage examples for `Native C++` projects in `Android Studio`, where running `MainActivity.java` can observe the inference effects of the LLM in logs.
-5. Equal support for multiple models, input parameters, and prompt mode options in [**llama.cpp**](https://github.com/ggerganov/llama.cpp).
-
-## Install
-
-The tool configuration information of `llama-jni` is as follows, which requires support for [NDK and CMake](https://developer.android.google.cn/studio/projects/install-ndk?hl=zh-cn#default-version). Please make sure they have been installed locally.
-
-```gradle
-plugins {
-    id 'com.android.application'
-}
-
-android {
-    namespace 'com.sx.llama.jni'
-    compileSdk 33
-
-    defaultConfig {
-        applicationId "com.sx.llama.jni"
-        minSdk 24
-        targetSdk 33
-        versionCode 1
-        versionName "1.0"
-
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-    }
-
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-        }
-    }
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-    externalNativeBuild {
-        cmake {
-            path file('src/main/cpp/CMakeLists.txt')
-            version '3.22.1'
-        }
-    }
-    buildFeatures {
-        viewBinding true
-    }
-}
-
-dependencies {
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.8.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    testImplementation 'junit:junit:4.13.2'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
-}
+```text
+app/
+  src/main/java/com/sx/llama/jni/
+    ModelStoreActivity.java        # model list + download/select/delete
+    ChatActivity.java              # chat flow + JNI inference calls
+    ChatSettingsActivity.java      # runtime parameter settings
+    ModelCatalogLoader.java        # models_catalog.json parser
+    ModelDownloadHelper.java       # DownloadManager wrapper
+    ModelStateStore.java           # model state SharedPreferences
+    LlmSettingsStore.java          # inference settings SharedPreferences
+    PromptTemplateEngine.java      # model-family prompt formatting
+    MainActivity.java              # JNI method declarations (bridge)
+  src/main/assets/
+    models_catalog.json            # curated model list
+  src/main/cpp/
+    CMakeLists.txt
+    examples/io-prompt/io-prompt.cpp
+    examples/interactive/...
 ```
 
-## Usage
+## Prerequisites
 
-### Preparations
+Install from Android Studio SDK Manager:
 
-`llama-jni` does not include the language model, please prepare the LLM by yourself, and they need to be supported by the [specified version](https://github.com/ggerganov/llama.cpp/releases/tag/master-7e4ea5b) of [**llama.cpp**](https://github.com/ggerganov/llama.cpp).
+- Android SDK Platform 35
+- Android SDK Build-Tools
+- NDK (Side by side)
+- CMake
+- LLDB (optional)
 
-On the mobile application dedicated folder of Android external storage device, you need to store the necessary LLM (e.g. [GPT4All](https://github.com/shixiangcap/llama-jni/blob/master/app/src/main/cpp/README.md#using-gpt4all)) and Prompt text files (e.g. [chat-with-bob.txt](https://github.com/shixiangcap/llama-jni/blob/master/app/src/main/cpp/prompts/chat-with-bob.txt)). Assuming their paths are:
+Recommended emulator:
 
-```sh
-/storage/emulated/0/Android/data/com.sx.llama.jni/ggml-vic7b-q5_0.bin
-/storage/emulated/0/Android/data/com.sx.llama.jni/chat-with-bob.txt
+- API 35/36
+- `arm64-v8a` system image (required by current ABI filter)
+
+## Quick Start
+
+1. Clone and open in Android Studio.
+2. Sync Gradle.
+3. Build:
+   ```bash
+   ./gradlew :app:assembleDebug
+   ```
+4. Run on an `arm64-v8a` emulator/device.
+5. In app:
+   - Open **Model Store**
+   - Download a model
+   - Select it
+   - Open chat and send prompt
+
+## Screenshots
+
+### Model Selection
+![Model Selection](doc/images/ModelSelection.png)
+
+### Chat Screen
+![Chat Screen](doc/images/ChatScreen.png)
+
+### Settings
+![Settings](doc/images/Setting.png)
+
+## Model Storage
+
+Downloaded models are saved to:
+
+```text
+getExternalFilesDir(null)/models/<filename>.gguf
 ```
 
-Then the following two pieces of code in [MainActivity.java](https://github.com/shixiangcap/llama-jni/blob/master/app/src/main/java/com/sx/llama/jni/MainActivity.java) need to correspond to their file names:
+Typical resolved path:
 
-```java
-private final String modelName = "ggml-vic7b-q5_0.bin";
-private final String txtName = "chat-with-bob.txt";
+```text
+/storage/emulated/0/Android/data/com.hcltech.llamademo/files/models/<filename>.gguf
 ```
 
-After the above work is completed, call the `llamaInteractive` function in [MainActivity.java](https://github.com/shixiangcap/llama-jni/blob/master/app/src/main/java/com/sx/llama/jni/MainActivity.java), and modify the second parameter to the dialog input required by the user to complete the preparation work before the LLM inference.
+## `models_catalog.json` Format
 
-```java
-llamaInteractive(tv, "Please tell me the largest city in China.");
+File location:
+
+```text
+app/src/main/assets/models_catalog.json
 ```
 
-### Run
+Root shape:
 
-Select AVD in `Android Studio` and then click the **Run** icon <img src="https://developer.android.google.cn/static/studio/images/buttons/toolbar-run.png?hl=zh-cn" class="inline-icon" alt=""> to execute `llama-jni` based on the local model file.
-
-<img src="https://github.com/shixiangcap/llama-jni/assets/41248645/be3c8154-d117-46d2-8301-6bb19ea370ed"/>
-
-### Arguments
-
-`llama-jni` provides two refactoring methods for the [main.cpp](https://github.com/shixiangcap/llama-jni/blob/master/app/src/main/cpp/examples/main/main.cpp), which are `single complete return` and `continuous stream printing` in the `Android` project.
-
-For these two modes, [MainActivity.java](https://github.com/shixiangcap/llama-jni/blob/master/app/src/main/java/com/sx/llama/jni/MainActivity.java) displays typical encapsulation and call methods:
-
-- Single complete return
-
-```java
-// call
-llamaIOPrompt(tv, "Please tell me the largest city in China.");
-
-// encapsulation
-private void llamaIOPrompt(TextView tv, String userPrompt) {
-    modelPtr = createIOLLModel(String.format("%s/%s", getExternalFilesDir(null).getParent(), modelName), 256);
-    String output = runIOLLModel(modelPtr, userPrompt);
-    tv.setText(output);
-    releaseIOLLModel(modelPtr);
+```json
+{
+  "version": 1,
+  "updated_at": "YYYY-MM-DD",
+  "models": []
 }
 ```
 
-The equivalent [**llama.cpp**](https://github.com/ggerganov/llama.cpp) command for this mode is
+Each model entry:
 
-```sh
-./main -m "/storage/emulated/0/Android/data/com.sx.llama.jni/ggml-vic7b-q5_0.bin" -p "Please tell me the largest city in China." -n 256
-```
-
-- Continuous stream printing
-
-```java
-// call
-llamaInteractive(tv, "Please tell me the largest city in China.");
-
-// encapsulation
-private void llamaInteractive(TextView tv, String userPrompt) {
-    modelPtr = createLLModel(String.format("%s/%s", getExternalFilesDir(null).getParent(), modelName), 256);
-    initLLModel(modelPtr, String.format("%s/%s", getExternalFilesDir(null).getParent(), txtName), userPrompt);
-    while (whileLLModel(modelPtr)) {
-        int[] tokenList = embdLLModel(modelPtr);
-        if (printLLModel(modelPtr)) {
-            for (int t : tokenList) {
-                System.out.println(new String(textLLModel(modelPtr, t), StandardCharsets.UTF_8));
-            }
-        }
-        if (breakLLModel(modelPtr)) {
-            System.out.println("break");
-            break;
-        }
-    }
-    tv.setText(stringFromJNI());
-    releaseLLModel(modelPtr);
+```json
+{
+  "id": "unique-model-id",
+  "name": "Display Name",
+  "publisher": "Publisher",
+  "format": "gguf",
+  "quant": "Q4_K_M",
+  "prompt_format": "llama3_instruct",
+  "file": {
+    "filename": "model-file.gguf",
+    "size_bytes": 1234567890,
+    "url": "https://..."
+  }
 }
 ```
 
-The equivalent [**llama.cpp**](https://github.com/ggerganov/llama.cpp) command for this mode (some parameters are not exposed to [MainActivity.java](https://github.com/shixiangcap/llama-jni/blob/master/app/src/main/java/com/sx/llama/jni/MainActivity.java)) is
+## How To Add a New Model
 
-```sh
-./main -m "/storage/emulated/0/Android/data/com.sx.llama.jni/ggml-vic7b-q5_0.bin" -n 256 --repeat_penalty 1.0 --color -i -r "User:" -f "/storage/emulated/0/Android/data/com.sx.llama.jni/chat-with-bob.txt"
-```
+1. Add an item to `app/src/main/assets/models_catalog.json`.
+2. Ensure `file.filename` ends with `.gguf`.
+3. Ensure `file.url` is a direct downloadable GGUF URL.
+4. Set correct `prompt_format` so the model receives proper chat template.
+5. Rebuild and run.
 
-## Examples
+Supported `prompt_format` values:
 
-### Single Complete Return
+- `plain`
+- `llama3_instruct`
+- `qwen_chatml`
+- `gemma_turn`
+- `phi3_chat`
 
-After running successfully, `llama-jni` can display the complete inference result of the LLM on the simulator interface based on the following code segment in [MainActivity.java](https://github.com/shixiangcap/llama-jni/blob/master/app/src/main/java/com/sx/llama/jni/MainActivity.java).
+If `prompt_format` is omitted, app uses heuristic fallback from model id/name.
 
-```java
-tv.setText(output);
-```
+## Runtime Inference Settings
 
-<img src="https://github.com/shixiangcap/llama-jni/assets/41248645/3174ec36-da68-466f-a0b0-6c3fef9edb0c" width=50%/>
+Open chat screen top-right settings button to configure:
 
-### Continuous Stream Printing
+- Max output tokens (16..4096)
+- Temperature (0.0..2.0)
+- Top-K (1..100)
+- Top-P (0.1..1.0)
 
-After running successfully, `llama-jni` can continuously print every `token` inference result of the large language model in the log column of `Android Studio` based on the following code segment in [MainActivity.java](https://github.com/shixiangcap/llama-jni/blob/master/app/src/main/java/com/sx/llama/jni/MainActivity.java).
+Settings are global and persisted in `SharedPreferences`.
 
-```java
-for (int t : tokenList) {
-    System.out.println(new String(textLLModel(modelPtr, t), StandardCharsets.UTF_8));
-}
-```
+## JNI Surface
 
-https://github.com/shixiangcap/llama-jni/assets/41248645/f9405141-e994-409d-8d20-94eef29025f3
+Defined in `app/src/main/java/com/sx/llama/jni/MainActivity.java`:
 
-## Related Efforts
+- `createIOLLModel(String modelPath, int maxTokens)`
+- `updateIOLLParams(long modelPtr, int maxTokens, float temperature, int topK, float topP)`
+- `runIOLLModel(long modelPtr, String prompt)`
+- `releaseIOLLModel(long modelPtr)`
 
-- [LLaMA](https://github.com/facebookresearch/llama) — Inference code for LLaMA models.
-- [llama.cpp](https://github.com/ggerganov/llama.cpp) — Port of Facebook's LLaMA model in C/C++.
+## Logging
 
-## Maintainers
+Main log tags:
 
-[@shixiangcap](https://github.com/shixiangcap)
+- `ModelStore`
+- `ModelDownload`
+- `ModelStateStore`
+- `ModelChat`
+- `llama-io-prompt`
 
-## Contributing
+Useful for diagnosing download issues, model load failures, and inference behavior.
 
-Feel free to dive in! [Open an issue](https://github.com/shixiangcap/llama-jni/issues) or submit PRs.
+## Known Notes
 
-### Contributors
-
-This project exists thanks to all the people who contribute.
-<a href="https://github.com/orgs/shixiangcap/people"><img src="https://avatars.githubusercontent.com/u/134358037" height=20rem/></a>
+- Large models can fail on emulator due to virtual storage limits (`ERROR_INSUFFICIENT_SPACE`).
+- Current ABI filter is `arm64-v8a`; use matching emulator/device image.
+- JNI `runIOLLModel` path is non-streaming at native call level; UI streams chunked text rendering after full response arrives.
 
 ## License
 
-[MIT](LICENSE) © shixiangcap
+This project is MIT licensed. See [LICENSE.txt](./LICENSE.txt).
+
+Additional third-party attribution is in [NOTICE.md](./NOTICE.md).
+
+## Contributing
+
+Please read [CONTRIBUTING.md](./CONTRIBUTING.md), [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md), and [SECURITY.md](./SECURITY.md).
