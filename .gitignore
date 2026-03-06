@@ -9,3 +9,19 @@
 /app/build
 /app/.cxx
 local.properties
+
+# Local Gradle/Android artifacts
+.gradle-home/
+.gradle/
+**/.gradle/
+**/build/
+**/.cxx/
+local.properties
+
+# Local build/cache artifacts
+.gradle-home/
+.gradle/
+**/.gradle/
+**/build/
+**/.cxx/
+local.properties
