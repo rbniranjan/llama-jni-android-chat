@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Locale;
 
 public final class PromptTemplateEngine {
-    private static final String DEFAULT_SYSTEM = "You are a helpful, concise assistant.";
+    public static final String DEFAULT_SYSTEM_PROMPT = "You are a helpful, concise assistant.";
     private static final int SUMMARY_TEXT_LIMIT = 220;
 
     private PromptTemplateEngine() {
@@ -52,47 +52,64 @@ public final class PromptTemplateEngine {
     }
 
     public static String buildPrompt(ModelInfo model, String userText) {
-        return buildPrompt(model, userText, Collections.emptyList(), 0);
+        return buildPrompt(model, userText, Collections.emptyList(), 0, DEFAULT_SYSTEM_PROMPT);
     }
 
     public static String buildPrompt(ModelInfo model,
                                      String userText,
                                      List<ChatTurn> turns,
                                      int maxHistoryTurns) {
+        return buildPrompt(model, userText, turns, maxHistoryTurns, DEFAULT_SYSTEM_PROMPT);
+    }
+
+    public static String buildPrompt(ModelInfo model,
+                                     String userText,
+                                     List<ChatTurn> turns,
+                                     int maxHistoryTurns,
+                                     String systemRole) {
         String text = userText == null ? "" : userText.trim();
         if (TextUtils.isEmpty(text)) {
             return "";
         }
 
+        String effectiveSystemRole = sanitizeSystemRole(systemRole);
         String historySummary = buildHistorySummary(turns, maxHistoryTurns);
         switch (resolveFormat(model)) {
             case LLAMA3_INSTRUCT:
                 return "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
-                        + withHistoryInSystem(DEFAULT_SYSTEM, historySummary)
+                        + withHistoryInSystem(effectiveSystemRole, historySummary)
                         + "<|eot_id|><|start_header_id|>user<|end_header_id|>\n"
                         + text
                         + "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n";
             case QWEN_CHATML:
                 return "<|im_start|>system\n"
-                        + withHistoryInSystem(DEFAULT_SYSTEM, historySummary)
+                        + withHistoryInSystem(effectiveSystemRole, historySummary)
                         + "<|im_end|>\n<|im_start|>user\n"
                         + text
                         + "<|im_end|>\n<|im_start|>assistant\n";
             case GEMMA_TURN:
                 return "<start_of_turn>user\n"
-                        + withHistoryInUser(historySummary, text)
+                        + withHistoryInUser(effectiveSystemRole, historySummary, text)
                         + "<end_of_turn>\n<start_of_turn>model\n";
             case PHI3_CHAT:
                 return "<|system|>\n"
-                        + withHistoryInSystem(DEFAULT_SYSTEM, historySummary)
+                        + withHistoryInSystem(effectiveSystemRole, historySummary)
                         + "<|end|>\n<|user|>\n"
                         + text
                         + "<|end|>\n<|assistant|>\n";
             case PLAIN:
             default:
-                return withHistoryInSystem(DEFAULT_SYSTEM, historySummary)
+                return withHistoryInSystem(effectiveSystemRole, historySummary)
                         + "\nUser: " + text + "\nAssistant:";
         }
+    }
+
+    private static String sanitizeSystemRole(String systemRole) {
+        String role = systemRole == null ? "" : systemRole.trim();
+        if (TextUtils.isEmpty(role)) {
+            return DEFAULT_SYSTEM_PROMPT;
+        }
+        return role;
     }
 
     private static String withHistoryInSystem(String system, String historySummary) {
@@ -104,14 +121,23 @@ public final class PromptTemplateEngine {
                 + historySummary;
     }
 
-    private static String withHistoryInUser(String historySummary, String userText) {
-        if (TextUtils.isEmpty(historySummary)) {
-            return userText;
+    private static String withHistoryInUser(String systemRole, String historySummary, String userText) {
+        StringBuilder builder = new StringBuilder();
+        if (!TextUtils.isEmpty(systemRole)) {
+            builder.append("System role:\n")
+                    .append(systemRole.trim())
+                    .append("\n\n");
         }
-        return "Recent conversation summary:\n"
-                + historySummary
-                + "\n\nCurrent user question:\n"
-                + userText;
+
+        if (!TextUtils.isEmpty(historySummary)) {
+            builder.append("Recent conversation summary:\n")
+                    .append(historySummary)
+                    .append("\n\n");
+        }
+
+        builder.append("Current user question:\n")
+                .append(userText);
+        return builder.toString();
     }
 
     private static String buildHistorySummary(List<ChatTurn> turns, int maxHistoryTurns) {

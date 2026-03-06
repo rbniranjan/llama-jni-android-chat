@@ -55,14 +55,17 @@ public class ChatActivity extends AppCompatActivity {
     private Runnable streamRunnable;
     private PromptFormatType promptFormatType = PromptFormatType.PLAIN;
     private LlmInferenceSettings currentSettings = LlmInferenceSettings.defaults();
+    private String currentSystemRole = PromptTemplateEngine.DEFAULT_SYSTEM_PROMPT;
 
     private final ActivityResultLauncher<Intent> settingsLauncher =
             registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
                 currentSettings = llmSettingsStore.load();
+                currentSystemRole = llmSettingsStore.loadSystemRolePrompt();
                 Log.i(TAG, "Settings updated maxTokens=" + currentSettings.maxTokens
                         + " temperature=" + currentSettings.temperature
                         + " topK=" + currentSettings.topK
-                        + " topP=" + currentSettings.topP);
+                        + " topP=" + currentSettings.topP
+                        + " systemRolePreview=\"" + previewForLog(currentSystemRole) + "\"");
                 if (modelPtr != 0L && !modelLoading && !generating) {
                     applySettingsToNativeAsync(currentSettings);
                 }
@@ -81,6 +84,7 @@ public class ChatActivity extends AppCompatActivity {
         catalogLoader = new ModelCatalogLoader(this);
         llmSettingsStore = new LlmSettingsStore(this);
         currentSettings = llmSettingsStore.load();
+        currentSystemRole = llmSettingsStore.loadSystemRolePrompt();
         nativeBridge = new MainActivity();
         inferenceExecutor = Executors.newSingleThreadExecutor(r -> {
             Thread thread = new Thread(r, "llama-infer-thread");
@@ -244,14 +248,23 @@ public class ChatActivity extends AppCompatActivity {
         int assistantMessagePosition = chatAdapter.addMessage(ChatMessage.assistant(""));
         scrollChatToBottom();
 
-        String formattedPrompt = PromptTemplateEngine.buildPrompt(selectedModel, prompt, conversationTurns, MAX_CONTEXT_TURNS);
+        currentSystemRole = llmSettingsStore.loadSystemRolePrompt();
+        String formattedPrompt = PromptTemplateEngine.buildPrompt(
+                selectedModel,
+                prompt,
+                conversationTurns,
+                MAX_CONTEXT_TURNS,
+                currentSystemRole
+        );
         Log.i(TAG, "Inference request modelId=" + selectedModel.id
                 + " promptFormat=" + promptFormatType
                 + " historyTurns=" + conversationTurns.size()
                 + " historyTurnsUsed=" + Math.min(MAX_CONTEXT_TURNS, conversationTurns.size())
                 + " userPromptChars=" + prompt.length()
                 + " formattedChars=" + formattedPrompt.length()
+                + " systemRoleChars=" + currentSystemRole.length()
                 + " userPromptPreview=\"" + previewForLog(prompt) + "\""
+                + " systemRolePreview=\"" + previewForLog(currentSystemRole) + "\""
                 + " formattedPromptPreview=\"" + previewForLog(formattedPrompt) + "\"");
         logLargeText("LLM_PROMPT_FULL", formattedPrompt);
 

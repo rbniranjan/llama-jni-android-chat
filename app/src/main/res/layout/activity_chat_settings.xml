@@ -17,6 +17,42 @@
             android:textColor="#4E4E4E"
             android:textSize="13sp" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="System role preset"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <Spinner
+            android:id="@+id/spRolePreset"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="System role text (used in prompt)"
+            android:textColor="#666666"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/etSystemRole"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:backgroundTint="#BDBDBD"
+            android:gravity="top|start"
+            android:hint="You are an expert in coding..."
+            android:inputType="textCapSentences|textMultiLine"
+            android:minHeight="96dp"
+            android:minLines="3"
+            android:padding="10dp"
+            android:textSize="14sp" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

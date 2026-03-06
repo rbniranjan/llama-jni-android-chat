@@ -1,6 +1,8 @@
 package com.sx.llama.jni;
 
 import android.os.Bundle;
+import android.text.TextUtils;
+import android.widget.ArrayAdapter;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -27,6 +29,8 @@ public class ChatSettingsActivity extends AppCompatActivity {
     private ActivityChatSettingsBinding binding;
     private LlmSettingsStore settingsStore;
     private LlmInferenceSettings initialSettings;
+    private SystemRolePreset initialRolePreset = SystemRolePreset.GENERAL;
+    private boolean suppressRoleSelectionEvent = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,23 +40,28 @@ public class ChatSettingsActivity extends AppCompatActivity {
 
         settingsStore = new LlmSettingsStore(this);
         initialSettings = settingsStore.load();
+        initialRolePreset = settingsStore.loadSystemRolePreset();
 
         if (getSupportActionBar() != null) {
             getSupportActionBar().setTitle("LLM Settings");
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         }
 
+        initRoleControls();
         initSliders();
         applySettingsToUi(initialSettings);
+        applyRoleToUi(initialRolePreset, settingsStore.loadSystemRolePrompt());
 
         binding.btnSave.setOnClickListener(v -> {
             settingsStore.save(readSettingsFromUi());
+            settingsStore.saveSystemRole(readRolePresetFromUi(), readRoleTextFromUi());
             setResult(RESULT_OK);
             finish();
         });
 
         binding.btnReset.setOnClickListener(v -> {
             applySettingsToUi(LlmInferenceSettings.defaults());
+            applyRoleToUi(SystemRolePreset.GENERAL, SystemRolePreset.GENERAL.defaultPrompt);
         });
     }
 
@@ -60,6 +69,25 @@ public class ChatSettingsActivity extends AppCompatActivity {
     public boolean onSupportNavigateUp() {
         finish();
         return true;
+    }
+
+    private void initRoleControls() {
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                this,
+                android.R.layout.simple_spinner_item,
+                SystemRolePreset.labels()
+        );
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        binding.spRolePreset.setAdapter(adapter);
+        binding.spRolePreset.setOnItemSelectedListener(SimpleItemSelectedListener.of(position -> {
+            if (suppressRoleSelectionEvent) {
+                return;
+            }
+            SystemRolePreset preset = presetFromPosition(position);
+            if (preset != SystemRolePreset.CUSTOM) {
+                binding.etSystemRole.setText(preset.defaultPrompt);
+            }
+        }));
     }
 
     private void initSliders() {
@@ -106,6 +134,46 @@ public class ChatSettingsActivity extends AppCompatActivity {
         int topK = progressToTopK(binding.seekTopK.getProgress());
         float topP = progressToTopP(binding.seekTopP.getProgress());
         return new LlmInferenceSettings(maxTokens, temperature, topK, topP).clamp();
+    }
+
+    private void applyRoleToUi(SystemRolePreset preset, String roleText) {
+        SystemRolePreset safePreset = preset == null ? SystemRolePreset.GENERAL : preset;
+        suppressRoleSelectionEvent = true;
+        binding.spRolePreset.setSelection(safePreset.ordinal(), false);
+        suppressRoleSelectionEvent = false;
+
+        if (!TextUtils.isEmpty(roleText)) {
+            binding.etSystemRole.setText(roleText);
+        } else if (safePreset == SystemRolePreset.CUSTOM) {
+            binding.etSystemRole.setText("");
+        } else {
+            binding.etSystemRole.setText(safePreset.defaultPrompt);
+        }
+    }
+
+    private SystemRolePreset readRolePresetFromUi() {
+        return presetFromPosition(binding.spRolePreset.getSelectedItemPosition());
+    }
+
+    private String readRoleTextFromUi() {
+        String text = binding.etSystemRole.getText() == null ? "" : binding.etSystemRole.getText().toString().trim();
+        if (!TextUtils.isEmpty(text)) {
+            return text;
+        }
+
+        SystemRolePreset preset = readRolePresetFromUi();
+        if (preset == SystemRolePreset.CUSTOM) {
+            return PromptTemplateEngine.DEFAULT_SYSTEM_PROMPT;
+        }
+        return preset.defaultPrompt;
+    }
+
+    private SystemRolePreset presetFromPosition(int position) {
+        SystemRolePreset[] presets = SystemRolePreset.values();
+        if (position < 0 || position >= presets.length) {
+            return SystemRolePreset.GENERAL;
+        }
+        return presets[position];
     }
 
     private int maxTokensToProgress(int value) {
