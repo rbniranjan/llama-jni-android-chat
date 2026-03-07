@@ -132,15 +132,23 @@ public:
         output.reserve(static_cast<size_t>(nPredict_) * 4);
         int generatedTokens = 0;
         const auto tDecodeStart = std::chrono::steady_clock::now();
+        const int nCtx = llama_n_ctx(ctx_);
+        int consumedTokens = 0;
+
+        if (batch.n_tokens >= nCtx) {
+            modelStatus = 1;
+            lastError = "context size exceeded";
+            LOGE("runPrompt context limit n_ctx=%d prompt_tokens=%d",
+                 nCtx, batch.n_tokens);
+            return lastError;
+        }
 
         for (int i = 0; i < nPredict_; ++i) {
-            const int nCtx = llama_n_ctx(ctx_);
-            const int nCtxUsed = llama_memory_seq_pos_max(llama_get_memory(ctx_), 0) + 1;
-            if (nCtxUsed + batch.n_tokens > nCtx) {
+            if (consumedTokens + batch.n_tokens >= nCtx) {
                 modelStatus = 1;
                 lastError = "context size exceeded";
-                LOGE("runPrompt context limit n_ctx=%d n_ctx_used=%d batch_tokens=%d",
-                     nCtx, nCtxUsed, batch.n_tokens);
+                LOGE("runPrompt context limit n_ctx=%d consumed_tokens=%d batch_tokens=%d",
+                     nCtx, consumedTokens, batch.n_tokens);
                 return lastError;
             }
 
@@ -150,6 +158,7 @@ public:
                 lastError = "failed to decode model";
                 return lastError;
             }
+            consumedTokens += batch.n_tokens;
 
             llama_token newToken = llama_sampler_sample(sampler_, ctx_, -1);
             if (llama_vocab_is_eog(vocab_, newToken)) {
@@ -329,12 +338,12 @@ private:
         llama_context_params ctxParams = llama_context_default_params();
         const unsigned int cpuCores = std::max(1u, std::thread::hardware_concurrency());
         nThreadsBatch_ = static_cast<int>(cpuCores);
-        nThreads_ = std::max(1, static_cast<int>(cpuCores) - 1);
+        nThreads_ = static_cast<int>(cpuCores);
         const int desiredCtx = nPredict_ + 1024;
         ctxParams.n_ctx = static_cast<uint32_t>(clampInt(desiredCtx,
                                                          static_cast<int>(MIN_CONTEXT_SIZE),
                                                          static_cast<int>(MAX_CONTEXT_SIZE)));
-        ctxParams.n_batch = 512;
+        ctxParams.n_batch = std::min<uint32_t>(ctxParams.n_ctx, 1024);
         ctxParams.n_threads = nThreads_;
         ctxParams.n_threads_batch = nThreadsBatch_;
         ctxParams.no_perf = true;
