@@ -29,12 +29,15 @@ public class ChatActivity extends AppCompatActivity {
     private static final String TAG = "ModelChat";
 
     private static final int DEFAULT_PREDICT_TOKENS = 128;
-    private static final int STREAM_CHUNK_CHARS = 48;
-    private static final long STREAM_DELAY_MS = 20L;
+    private static final int MIN_STREAM_CHUNK_CHARS = 192;
+    private static final int MAX_STREAM_CHUNK_CHARS = 768;
+    private static final long FAST_STREAM_DELAY_MS = 2L;
+    private static final long NORMAL_STREAM_DELAY_MS = 6L;
     private static final int MAX_CONTEXT_TURNS = 2;
     private static final int MAX_STORED_TURNS = 20;
     private static final int LOG_PREVIEW_CHARS = 420;
     private static final int LOG_CHUNK_SIZE = 1800;
+    private static final boolean ENABLE_VERBOSE_LLM_LOGS = false;
 
     private ActivityChatBinding binding;
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
@@ -266,7 +269,9 @@ public class ChatActivity extends AppCompatActivity {
                 + " userPromptPreview=\"" + previewForLog(prompt) + "\""
                 + " systemRolePreview=\"" + previewForLog(currentSystemRole) + "\""
                 + " formattedPromptPreview=\"" + previewForLog(formattedPrompt) + "\"");
-        logLargeText("LLM_PROMPT_FULL", formattedPrompt);
+        if (ENABLE_VERBOSE_LLM_LOGS) {
+            logLargeText("LLM_PROMPT_FULL", formattedPrompt);
+        }
 
         generating = true;
         binding.btnSend.setEnabled(false);
@@ -287,12 +292,16 @@ public class ChatActivity extends AppCompatActivity {
             }
 
             String rawOutput = output == null ? "" : output;
-            logLargeText("LLM_OUTPUT_RAW_FULL", rawOutput);
+            if (ENABLE_VERBOSE_LLM_LOGS) {
+                logLargeText("LLM_OUTPUT_RAW_FULL", rawOutput);
+            }
             boolean nativeFailure = isNativeFailureMessage(rawOutput);
             String cleaned = nativeFailure
                     ? rawOutput.trim()
                     : PromptTemplateEngine.extractAssistantText(selectedModel, rawOutput, formattedPrompt, finalUserPrompt);
-            logLargeText("LLM_OUTPUT_CLEANED_FULL", cleaned);
+            if (ENABLE_VERBOSE_LLM_LOGS) {
+                logLargeText("LLM_OUTPUT_CLEANED_FULL", cleaned);
+            }
 
             Log.i(TAG, "Inference complete modelId=" + selectedModel.id
                     + " elapsedMs=" + (System.currentTimeMillis() - startedAt)
@@ -323,6 +332,9 @@ public class ChatActivity extends AppCompatActivity {
         }
 
         final int[] index = {0};
+        final int chunkChars = chooseChunkSize(fullOutput.length());
+        final long chunkDelayMs = chooseStreamDelay(fullOutput.length());
+        final int[] updateCount = {0};
 
         streamRunnable = new Runnable() {
             @Override
@@ -331,16 +343,19 @@ public class ChatActivity extends AppCompatActivity {
                     return;
                 }
 
-                int end = Math.min(index[0] + STREAM_CHUNK_CHARS, fullOutput.length());
+                int end = Math.min(index[0] + chunkChars, fullOutput.length());
                 if (end > index[0]) {
                     String chunked = fullOutput.substring(0, end);
                     chatAdapter.updateMessageText(assistantMessagePosition, chunked);
                     index[0] = end;
-                    scrollChatToBottom();
+                    updateCount[0]++;
+                    if ((updateCount[0] % 3) == 0 || index[0] >= fullOutput.length()) {
+                        scrollChatToBottom();
+                    }
                 }
 
                 if (index[0] < fullOutput.length()) {
-                    uiHandler.postDelayed(this, STREAM_DELAY_MS);
+                    uiHandler.postDelayed(this, chunkDelayMs);
                     return;
                 }
 
@@ -356,6 +371,18 @@ public class ChatActivity extends AppCompatActivity {
         };
 
         uiHandler.post(streamRunnable);
+    }
+
+    private int chooseChunkSize(int totalChars) {
+        if (totalChars <= 0) {
+            return MIN_STREAM_CHUNK_CHARS;
+        }
+        int adaptive = totalChars / 24;
+        return Math.max(MIN_STREAM_CHUNK_CHARS, Math.min(MAX_STREAM_CHUNK_CHARS, adaptive));
+    }
+
+    private long chooseStreamDelay(int totalChars) {
+        return totalChars > 4000 ? FAST_STREAM_DELAY_MS : NORMAL_STREAM_DELAY_MS;
     }
 
     private void scrollChatToBottom() {
